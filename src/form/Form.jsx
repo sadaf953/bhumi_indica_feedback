@@ -59,9 +59,6 @@ export default function Form() {
         <a href={LINKS.site} className="fb-logo" aria-label="Bhumi Indica home">
           <img src={logo} alt="Bhumi Indica" />
         </a>
-        <a href={LINKS.site} className="fb-shop" aria-label="Visit the Bhumi Indica store">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5h15l-1 12h-13z" /><path d="M8.5 8.5V7a3.5 3.5 0 0 1 7 0v1.5" /></svg>
-        </a>
       </header>
 
       <main className="fb-main" aria-live="polite">
@@ -155,10 +152,6 @@ export default function Form() {
         </div>
       </main>
 
-      <footer className="fb-foot">
-        <p>© Bhumi Indica</p>
-        <a href={LINKS.site}>bhumiindica.in</a>
-      </footer>
     </div>
   )
 }
