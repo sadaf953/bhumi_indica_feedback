@@ -33,7 +33,7 @@ b, strong { font-weight: 500; color: var(--terra); }
 .page { max-width: 640px; margin: 0 auto; padding: 24px 16px 40px; min-height: 100vh; display: flex; flex-direction: column; }
 .page.wide { max-width: 1040px; }
 
-.topbar { display: flex; justify-content: flex-start; align-items: center; padding: 4px 0 24px; }
+.topbar { display: flex; justify-content: center; align-items: center; padding: 4px 0 24px; }
 .admin-bar { justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .logo img { height: 52px; width: auto; display: block; }
 .admin-actions { display: flex; align-items: center; gap: 12px; }
