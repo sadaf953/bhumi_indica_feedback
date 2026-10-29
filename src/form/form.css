@@ -4,24 +4,24 @@
   min-height: 100svh;
   display: flex;
   flex-direction: column;
-  max-width: 480px;
-  margin: 0 auto;
-  padding: 28px 22px 32px;
-  /* a soft warm glow behind the logo, like light on plaster */
-  background:
-    radial-gradient(120% 40% at 50% -6%, rgba(188, 136, 115, 0.14), transparent 70%);
 }
 
-/* header: centred logo + ornament */
-.fb-head { display: grid; justify-items: center; gap: 18px; padding: 6px 0 4px; }
-.fb-logo img { height: 74px; width: auto; display: block; }
+/* header — matches bhumiindica.in on mobile:
+   40px mustard announcement bar, then a 75px cream bar with the logo centred (150px wide) */
+.fb-announce {
+  height: 40px; display: flex; align-items: center; justify-content: center;
+  background: var(--mustard); color: #3B1F0E;
+  font-size: 11px; letter-spacing: 0.18em; text-align: center; padding: 0 16px;
+}
+.fb-head {
+  position: relative; height: 75px; display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid rgba(58, 58, 58, 0.08);
+}
+.fb-logo img { height: 46px; width: auto; display: block; }
+.fb-shop { position: absolute; right: 18px; top: 50%; transform: translateY(-50%); display: flex; padding: 6px; color: var(--ink); }
+.fb-shop svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
 
-.fb-orn { display: inline-flex; align-items: center; gap: 8px; }
-.fb-orn i { width: 34px; height: 1px; background: var(--terra); opacity: .7; }
-.fb-orn b { width: 5px; height: 5px; background: var(--terra); transform: rotate(45deg); }
-.fb-orn.small i { width: 22px; }
-.fb-orn.small b { width: 4px; height: 4px; }
-
+.fb-main, .fb-foot { width: 100%; max-width: 480px; margin: 0 auto; padding-left: 22px; padding-right: 22px; }
 .fb-main { flex: 1; }
 
 /* intro */
@@ -130,7 +130,7 @@
 }
 
 /* footer */
-.fb-foot { display: grid; justify-items: center; gap: 8px; padding-top: 40px; text-align: center; }
+.fb-foot { display: grid; justify-items: center; gap: 6px; padding-top: 40px; padding-bottom: 32px; text-align: center; }
 .fb-foot p { margin: 0; font-size: 12px; letter-spacing: 0.08em; color: var(--ink-soft); }
 .fb-foot a { font-size: 12px; letter-spacing: 0.12em; color: var(--terra); text-decoration: none; }
 
@@ -145,7 +145,7 @@
 
 /* larger screens: same layout, a bit more air */
 @media (min-width: 640px) {
-  .fb { padding-top: 48px; }
+  .fb-hero { padding-top: 44px; }
   .fb-title { font-size: 32px; }
   .fb-card { padding: 34px 32px 28px; }
 }

@@ -53,11 +53,15 @@ export default function Form() {
 
   return (
     <div className="fb">
+      {/* same header pattern as bhumiindica.in: announcement bar + centred logo */}
+      <div className="fb-announce">Ancient wisdom for modern kitchen</div>
       <header className="fb-head">
         <a href={LINKS.site} className="fb-logo" aria-label="Bhumi Indica home">
           <img src={logo} alt="Bhumi Indica" />
         </a>
-        <Ornament />
+        <a href={LINKS.site} className="fb-shop" aria-label="Visit the Bhumi Indica store">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5h15l-1 12h-13z" /><path d="M8.5 8.5V7a3.5 3.5 0 0 1 7 0v1.5" /></svg>
+        </a>
       </header>
 
       <main className="fb-main" aria-live="polite">
@@ -152,18 +156,9 @@ export default function Form() {
       </main>
 
       <footer className="fb-foot">
-        <Ornament small />
-        <p>Ancient wisdom for modern kitchen.</p>
+        <p>© Bhumi Indica</p>
         <a href={LINKS.site}>bhumiindica.in</a>
       </footer>
     </div>
-  )
-}
-
-function Ornament({ small = false }) {
-  return (
-    <span className={'fb-orn' + (small ? ' small' : '')} aria-hidden="true">
-      <i /><b /><i />
-    </span>
   )
 }
