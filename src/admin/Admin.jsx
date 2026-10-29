@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { QUESTIONS } from '../config/questions.js'
+import { BRANDS } from '../content.js'
 import { supabase, supabaseConfigured } from '../supabase.js'
 import Logo from '../components/Logo.jsx'
 
 const RANGES = [
   { id: 'all', label: 'All time', days: null },
-  { id: '30', label: 'Last 30 days', days: 30 },
-  { id: '7', label: 'Last 7 days', days: 7 },
+  { id: '30', label: '30 days', days: 30 },
+  { id: '7', label: '7 days', days: 7 },
 ]
 
 export default function Admin() {
@@ -20,15 +20,15 @@ export default function Admin() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  if (!supabaseConfigured) return <Shell><p className="lead">Supabase isn’t configured yet. Add the URL and anon key.</p></Shell>
+  if (!supabaseConfigured) return <Shell><p className="lead">Supabase isn’t configured yet.</p></Shell>
   if (checking) return <Shell><p className="lead">Loading…</p></Shell>
   if (!session) return <Login />
   return <Dashboard session={session} />
 }
 
-function Shell({ children, wide = false }) {
+function Shell({ children }) {
   return (
-    <main className={'page' + (wide ? ' wide' : '')}>
+    <main className="page">
       <header className="topbar"><Logo /></header>
       <section className="card">{children}</section>
     </main>
@@ -77,8 +77,9 @@ function Dashboard({ session }) {
     if (!me || me.length === 0) { setIsAdmin(false); setLoading(false); return }
     const all = []
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase.from('feedback')
-        .select('id, created_at, answers').order('created_at', { ascending: false }).range(from, from + 999)
+      const { data, error } = await supabase.from('responses')
+        .select('id, created_at, first_purchase, current_brand')
+        .order('created_at', { ascending: false }).range(from, from + 999)
       if (error) { setErr(error.message); break }
       all.push(...data)
       if (data.length < 1000) break
@@ -106,11 +107,16 @@ function Dashboard({ session }) {
     )
   }
 
-  const last7 = rows.filter((r) => Date.now() - new Date(r.created_at).getTime() < 7 * 864e5).length
+  const total = filtered.length
+  const firstTime = filtered.filter((r) => r.first_purchase).length
+  const existing = total - firstTime
+  const brandCounts = Object.fromEntries(BRANDS.map((b) => [b, 0]))
+  filtered.forEach((r) => { if (!r.first_purchase && r.current_brand in brandCounts) brandCounts[r.current_brand]++ })
+  const pct = (n, d) => (d ? Math.round((n / d) * 100) : 0)
 
   async function remove(id) {
     if (!window.confirm('Delete this response? This can’t be undone.')) return
-    const { error } = await supabase.from('feedback').delete().eq('id', id)
+    const { error } = await supabase.from('responses').delete().eq('id', id)
     if (error) alert(error.message); else setRows((r) => r.filter((x) => x.id !== id))
   }
 
@@ -136,7 +142,7 @@ function Dashboard({ session }) {
                 <button key={r.id} className={range === r.id ? 'on' : ''} onClick={() => setRange(r.id)}>{r.label}</button>
               ))}
             </div>
-            <button className="btn btn-outline" onClick={() => downloadCsv(filtered)} disabled={!filtered.length}>Download CSV</button>
+            <button className="btn btn-outline" onClick={() => downloadCsv(filtered)} disabled={!total}>Download CSV</button>
             <button className="btn btn-link" onClick={load}>Refresh</button>
           </div>
         </div>
@@ -145,32 +151,48 @@ function Dashboard({ session }) {
         {loading ? <p className="lead">Loading responses…</p> : (
           <>
             <div className="stats">
-              <Stat label="Responses" value={filtered.length} />
-              <Stat label="Last 7 days" value={last7} />
-              <Stat label="Total, all time" value={rows.length} />
+              <Stat label="Responses" value={total} />
+              <Stat label="First cast iron purchase" value={firstTime} sub={`${pct(firstTime, total)}%`} />
+              <Stat label="Already own cast iron" value={existing} sub={`${pct(existing, total)}%`} />
             </div>
 
             <div className="charts">
-              {QUESTIONS.filter((q) => q.type !== 'text').map((q) => <QuestionChart key={q.id} q={q} rows={filtered} />)}
+              <div className="chart">
+                <p className="chart-q">Is this your first cast iron cookware purchase?</p>
+                <p className="chart-sub">{total} answer{total === 1 ? '' : 's'}</p>
+                <div className="split" aria-hidden="true">
+                  <span className="split-yes" style={{ width: `${pct(firstTime, total)}%` }} />
+                  <span className="split-no" style={{ width: `${pct(existing, total)}%` }} />
+                </div>
+                <Bar label="Yes" n={firstTime} denom={total} max={Math.max(firstTime, existing, 1)} cls="yes" />
+                <Bar label="No" n={existing} denom={total} max={Math.max(firstTime, existing, 1)} cls="no" />
+              </div>
+
+              <div className="chart">
+                <p className="chart-q">Which brand are you currently using?</p>
+                <p className="chart-sub">{existing} answer{existing === 1 ? '' : 's'} · from customers who said No</p>
+                {BRANDS.map((b) => (
+                  <Bar key={b} label={b} n={brandCounts[b]} denom={existing} max={Math.max(1, ...Object.values(brandCounts))} cls="no" />
+                ))}
+              </div>
             </div>
 
             <h2 className="section-title">All responses</h2>
-            {filtered.length === 0 ? <p className="lead">No responses yet.</p> : (
-              <div className="responses">
-                {filtered.map((r) => (
-                  <article className="response" key={r.id}>
-                    <div className="response-head">
-                      <time>{fmtDate(r.created_at)}</time>
-                      <button className="btn btn-link small" onClick={() => remove(r.id)}>Delete</button>
-                    </div>
-                    {QUESTIONS.map((q) => (
-                      <div className="response-row" key={q.id}>
-                        <span className="response-q">{q.label}</span>
-                        <span className="response-a">{fmtAnswer(r.answers?.[q.id])}</span>
-                      </div>
+            {total === 0 ? <p className="lead">No responses yet.</p> : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead><tr><th>Date</th><th>First purchase?</th><th>Current brand</th><th /></tr></thead>
+                  <tbody>
+                    {filtered.map((r) => (
+                      <tr key={r.id}>
+                        <td>{fmtDate(r.created_at)}</td>
+                        <td><span className={'pill ' + (r.first_purchase ? 'yes' : 'no')}>{r.first_purchase ? 'Yes' : 'No'}</span></td>
+                        <td>{r.current_brand || '—'}</td>
+                        <td className="right"><button className="btn btn-link small" onClick={() => remove(r.id)}>Delete</button></td>
+                      </tr>
                     ))}
-                  </article>
-                ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </>
@@ -180,38 +202,21 @@ function Dashboard({ session }) {
   )
 }
 
-function Stat({ label, value }) {
-  return <div className="stat"><span className="stat-v">{value}</span><span className="stat-l">{label}</span></div>
+function Stat({ label, value, sub }) {
+  return (
+    <div className="stat">
+      <span className="stat-v">{value}{sub && <small> {sub}</small>}</span>
+      <span className="stat-l">{label}</span>
+    </div>
+  )
 }
 
-function QuestionChart({ q, rows }) {
-  const opts = q.type === 'rating' ? ['5', '4', '3', '2', '1'] : q.options
-  const counts = Object.fromEntries(opts.map((o) => [o, 0]))
-  let answered = 0, sum = 0
-  for (const r of rows) {
-    const v = r.answers?.[q.id]
-    if (v === undefined || v === null) continue
-    answered++
-    if (q.type === 'multi') (Array.isArray(v) ? v : []).forEach((o) => { if (o in counts) counts[o]++ })
-    else { const k = String(v); if (k in counts) counts[k]++; if (q.type === 'rating') sum += Number(v) }
-  }
-  const max = Math.max(1, ...Object.values(counts))
-  const denom = Math.max(1, answered)
+function Bar({ label, n, denom, max, cls }) {
   return (
-    <div className="chart">
-      <p className="chart-q">{q.label}</p>
-      <p className="chart-sub">
-        {answered} answer{answered === 1 ? '' : 's'}
-        {q.type === 'rating' && answered > 0 && <> · average <b>{(sum / answered).toFixed(1)}</b> / 5</>}
-        {q.type === 'multi' && ' · multiple choice'}
-      </p>
-      {opts.map((o) => (
-        <div className="bar-row" key={o}>
-          <span className="bar-label">{q.type === 'rating' ? `${o} ★` : o}</span>
-          <span className="bar-track"><span className="bar-fill" style={{ width: `${(counts[o] / max) * 100}%` }} /></span>
-          <span className="bar-num">{counts[o]} <em>{Math.round((counts[o] / denom) * 100)}%</em></span>
-        </div>
-      ))}
+    <div className="bar-row">
+      <span className="bar-label">{label}</span>
+      <span className="bar-track"><span className={'bar-fill ' + cls} style={{ width: `${(n / max) * 100}%` }} /></span>
+      <span className="bar-num">{n} <em>{denom ? Math.round((n / denom) * 100) : 0}%</em></span>
     </div>
   )
 }
@@ -219,15 +224,11 @@ function QuestionChart({ q, rows }) {
 function fmtDate(iso) {
   return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
-function fmtAnswer(v) {
-  if (v === undefined || v === null || v === '') return '—'
-  return Array.isArray(v) ? v.join(', ') : String(v)
-}
+
 function downloadCsv(rows) {
   const esc = (s) => `"${String(s).replace(/"/g, '""')}"`
-  const head = ['Date', ...QUESTIONS.map((q) => q.label)]
-  const lines = [head.map(esc).join(',')]
-  for (const r of rows) lines.push([fmtDate(r.created_at), ...QUESTIONS.map((q) => fmtAnswer(r.answers?.[q.id]))].map(esc).join(','))
+  const lines = [['Date', 'First cast iron purchase', 'Current brand'].map(esc).join(',')]
+  for (const r of rows) lines.push([fmtDate(r.created_at), r.first_purchase ? 'Yes' : 'No', r.current_brand || ''].map(esc).join(','))
   const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
