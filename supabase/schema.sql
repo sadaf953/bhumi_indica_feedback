@@ -60,17 +60,17 @@ alter table public.admin_emails enable row level security;
 drop policy if exists "admins read responses" on public.responses;
 create policy "admins read responses" on public.responses
   for select to authenticated
-  using (exists (select 1 from public.admin_emails a where a.email = (auth.jwt() ->> 'email')));
+  using (exists (select 1 from public.admin_emails a where lower(a.email) = lower(auth.jwt() ->> 'email')));
 
 drop policy if exists "admins delete responses" on public.responses;
 create policy "admins delete responses" on public.responses
   for delete to authenticated
-  using (exists (select 1 from public.admin_emails a where a.email = (auth.jwt() ->> 'email')));
+  using (exists (select 1 from public.admin_emails a where lower(a.email) = lower(auth.jwt() ->> 'email')));
 
 drop policy if exists "admins see own row" on public.admin_emails;
 create policy "admins see own row" on public.admin_emails
   for select to authenticated
-  using (email = (auth.jwt() ->> 'email'));
+  using (lower(email) = lower(auth.jwt() ->> 'email'));
 
 -- 4. The only way to submit ------------------------------------------------------
 -- Checks: honeypot empty, page open ≥ 3s, valid name + phone/email, answer shape,
@@ -154,4 +154,4 @@ revoke all on function public.ping() from public;
 grant execute on function public.ping() to anon;
 
 -- 6. Add the admin (replace with Vivek's email, then run this line on its own) ---
--- insert into public.admin_emails (email) values ('vivek@example.com') on conflict do nothing;
+-- insert into public.admin_emails (email) values (lower('vivek@example.com')) on conflict do nothing;
