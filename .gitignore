@@ -3,3 +3,8 @@ dist
 .env
 .env.local
 .DS_Store
+
+# backups - real customer data, never commit
+backup-repo/
+backups/
+export-tmp/

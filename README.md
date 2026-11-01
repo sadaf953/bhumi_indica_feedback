@@ -47,3 +47,19 @@ npm run dev
 - No direct table access for the public — submissions only go through the `submit_response` function.
 - Hidden honeypot field, minimum 3-second time on page, database check constraints (only the 5 brands, brand only when answer is No), max 5 submissions per IP per hour (IP stored only as a hash).
 - Collects the customer's name and one contact (Indian mobile or email), validated on the page and in the database. Only admins (emails in admin_emails) can read them; the public cannot read the table at all.
+
+## Keep-alive and daily backup (GitHub Actions)
+Repo → Settings → Secrets and variables → Actions:
+
+| Secret | Value |
+|---|---|
+| `SUPABASE_URL` | Supabase Project URL |
+| `SUPABASE_ANON_KEY` | anon public key (keep-alive) |
+| `SUPABASE_SERVICE_ROLE_KEY` | service role key (backup only; never put it in the website) |
+| `BACKUP_REPO` | e.g. `sadaf953/bhumi_feedback_backup`, a **private** empty repo |
+| `BACKUP_PAT` | fine-grained GitHub token with Contents: read & write on that backup repo only |
+| `SUPABASE_DB_URL` | optional: full Postgres connection string for a complete dump |
+| `ALERT_WEBHOOK_URL` | optional: Slack/Discord webhook for failure alerts |
+
+- **keep-alive.yml** pings `rpc/ping` daily so the free project never pauses.
+- **daily-backup.yml** runs at 1:30 AM IST, saves `responses`, `admin_emails` and login accounts as CSV into the backup repo, one folder per run. Test both from the Actions tab → Run workflow.

@@ -1,0 +1,108 @@
+name: Daily Supabase Backup
+
+# Copies every feedback response (and the admin list + login accounts) into a
+# separate PRIVATE backup repo, one folder per run. Same setup as the Watersun CRM.
+#
+# Layout in the backup repo:
+#   YYYY/MM/DD/HH-MM/   one folder per run, India time; nothing is overwritten
+#     summary.csv       rows saved vs rows on the server, per table
+#     responses.csv     every feedback response (name, phone/email, answers)
+#     admin_emails.csv  who can open the dashboard
+#     auth_users.csv    login accounts (no passwords)
+#     db/               full database dump (only when SUPABASE_DB_URL is set)
+#
+# Any error or short table FAILS the job and nothing is committed.
+#
+# Secrets (required): BACKUP_PAT, BACKUP_REPO, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# Secrets (optional): SUPABASE_DB_URL, ALERT_WEBHOOK_URL
+#
+# The backup holds customer names and phone numbers: BACKUP_REPO must be PRIVATE.
+
+on:
+  schedule:
+    - cron: '0 20 * * *'   # 8:00 PM UTC = 1:30 AM IST
+  workflow_dispatch:         # manual trigger for testing
+
+concurrency:
+  group: daily-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out this repo (for the export script)
+        uses: actions/checkout@v4
+
+      - name: Clone private backup repo
+        run: |
+          echo "Starting backup at $(date -u)..."
+          git clone "https://x-access-token:${{ secrets.BACKUP_PAT }}@github.com/${{ secrets.BACKUP_REPO }}.git" backup-repo
+
+      - name: Set folder path
+        run: echo "FOLDER=$(TZ=Asia/Kolkata date +%Y/%m/%d/%H-%M)" >> $GITHUB_ENV
+
+      - name: Export every table (paged and verified)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0, 'scripts/backup')
+          import export_tables
+          export_tables.MAX_PART_BYTES = 10 ** 12   # one CSV per table
+          sys.argv = ['export_tables.py', 'export-tmp']
+          export_tables.main()
+          PY
+          mkdir -p "backup-repo/$FOLDER"
+          mv export-tmp/* "backup-repo/$FOLDER/"
+
+      - name: Full database dump (structure + data)
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL is not set - skipping the full database dump (tables were still exported above)."
+            exit 0
+          fi
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
+          mkdir -p "backup-repo/$FOLDER/db"
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --schema-only --no-owner --no-privileges \
+            -f "backup-repo/$FOLDER/db"/schema.sql
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --schema=public --data-only --no-owner --no-privileges \
+            -f "backup-repo/$FOLDER/db"/data.sql
+          /usr/lib/postgresql/17/bin/pg_dump "$SUPABASE_DB_URL" --data-only --table=auth.users --table=auth.identities \
+            --no-owner --no-privileges -f "backup-repo/$FOLDER/db"/auth.sql
+          for f in "backup-repo/$FOLDER"/db/*.sql; do
+            [ -s "$f" ] || { echo "::error::$f is empty"; exit 1; }
+            echo "$(basename "$f"): $(wc -l < "$f") lines"
+          done
+
+      - name: Commit backup
+        run: |
+          cd backup-repo
+          git config user.name  "backup-bot"
+          git config user.email "backup-bot@users.noreply.github.com"
+          git add "$FOLDER"
+          git commit -m "Backup $(TZ=Asia/Kolkata date +'%d %b %Y, %H:%M IST')" || echo "Nothing to commit"
+          git push
+          echo "Backup complete ✅"
+          cat "$FOLDER/summary.csv"
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          MSG="⚠️ Bhumi Indica feedback daily backup FAILED on $(date -u +'%d %b %Y'). Open: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo "::error::$MSG"
+          if [ -n "$ALERT_WEBHOOK_URL" ]; then
+            curl -sS -X POST -H 'Content-Type: application/json' \
+              -d "{\"text\": \"$MSG\", \"content\": \"$MSG\"}" "$ALERT_WEBHOOK_URL" || true
+          fi

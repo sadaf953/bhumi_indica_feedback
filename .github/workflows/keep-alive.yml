@@ -1,19 +1,32 @@
-name: Keep Supabase awake
+name: Supabase Keep Alive
 
-# Free Supabase projects pause after ~7 days with no activity.
-# This pings the database every 3 days so the feedback form never goes down.
+# Free Supabase projects pause after ~7 days without traffic. This pings the
+# database every day. It calls the public ping() function (the anon key has no
+# access to the feedback table itself, by design).
+#
+# Secrets: SUPABASE_URL, SUPABASE_ANON_KEY
+
 on:
   schedule:
-    - cron: '0 6 */3 * *'
-  workflow_dispatch:
+    - cron: '0 3 * * *'  # every day, 8:30 AM IST
+  workflow_dispatch:     # manual trigger for testing
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Ping Supabase
+      - name: Ping Supabase to prevent pause
         run: |
-          curl -fsS -X POST "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/rpc/ping" \
-            -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
-            -H "Content-Type: application/json" -d '{}'
+          echo "Pinging Supabase at $(date -u)..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${{ secrets.SUPABASE_URL }}/rest/v1/rpc/ping" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "Supabase ping status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Supabase ping returned $STATUS - check your secrets or project status."
+            exit 1
+          fi
+          echo "Supabase is alive ✅"
