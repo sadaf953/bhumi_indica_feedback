@@ -3,6 +3,11 @@ import { BRANDS } from '../content.js'
 import { supabase, supabaseConfigured } from '../supabase.js'
 import Logo from '../components/Logo.jsx'
 
+// Read before supabase-js clears the URL: did we arrive from a reset-password email?
+const ARRIVED_FROM_RESET = /type=recovery/.test(window.location.hash)
+const RESET_LINK_ERROR = /error_code=otp_expired|error=access_denied/.test(window.location.hash)
+const MIN_PASSWORD = 8
+
 const RANGES = [
   { id: 'all', label: 'All time', days: null },
   { id: '30', label: '30 days', days: 30 },
@@ -12,17 +17,30 @@ const RANGES = [
 export default function Admin() {
   const [session, setSession] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [recovery, setRecovery] = useState(ARRIVED_FROM_RESET)
 
   useEffect(() => {
     if (!supabaseConfigured) { setChecking(false); return }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setChecking(false) })
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s)
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
+    })
     return () => sub.subscription.unsubscribe()
   }, [])
 
   if (!supabaseConfigured) return <Shell><p className="lead">Supabase isn’t configured yet.</p></Shell>
   if (checking) return <Shell><p className="lead">Loading…</p></Shell>
-  if (!session) return <Login />
+  if (!session) return <Login linkExpired={RESET_LINK_ERROR} />
+  if (recovery) {
+    return (
+      <Shell>
+        <SetPassword
+          title="Set a new password" intro={`For ${session.user.email}`}
+          onDone={() => { setRecovery(false); history.replaceState(null, '', window.location.pathname) }} />
+      </Shell>
+    )
+  }
   return <Dashboard session={session} />
 }
 
@@ -35,13 +53,14 @@ function Shell({ children }) {
   )
 }
 
-function Login() {
+function Login({ linkExpired }) {
+  const [mode, setMode] = useState('signin') // signin | forgot | sent
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [err, setErr] = useState('')
+  const [err, setErr] = useState(linkExpired ? 'That reset link has expired or was already used. Request a new one below.' : '')
   const [busy, setBusy] = useState(false)
 
-  async function onSubmit(e) {
+  async function onSignIn(e) {
     e.preventDefault()
     setErr(''); setBusy(true)
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
@@ -49,18 +68,113 @@ function Login() {
     if (error) setErr('Incorrect email or password.')
   }
 
+  async function onForgot(e) {
+    e.preventDefault()
+    setErr(''); setBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: window.location.origin + window.location.pathname,
+    })
+    setBusy(false)
+    if (error && /rate|seconds/i.test(error.message)) { setErr('Too many requests. Please wait a few minutes and try again.'); return }
+    setMode('sent') // same message whether or not the email exists
+  }
+
+  if (mode === 'sent') {
+    return (
+      <Shell>
+        <p className="eyebrow">Admin</p>
+        <h1>Check your email</h1>
+        <span className="rule" />
+        <p className="lead">If <b>{email.trim()}</b> has an admin account, a link to set a new password is on its way. It can take a minute; check spam too.</p>
+        <button className="btn btn-link back" onClick={() => setMode('signin')}>← Back to sign in</button>
+      </Shell>
+    )
+  }
+
+  if (mode === 'forgot') {
+    return (
+      <Shell>
+        <p className="eyebrow">Admin</p>
+        <h1>Forgot password</h1>
+        <span className="rule" />
+        <p className="lead">Enter your admin email and we’ll send you a link to set a new password.</p>
+        <form onSubmit={onForgot} className="login">
+          <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
+          {err && <p className="error">{err}</p>}
+          <button className="btn btn-solid" disabled={busy}>{busy ? 'Sending…' : 'Send reset link'}</button>
+        </form>
+        <button className="btn btn-link back" onClick={() => { setMode('signin'); setErr('') }}>← Back to sign in</button>
+      </Shell>
+    )
+  }
+
   return (
     <Shell>
       <p className="eyebrow">Admin</p>
       <h1>Sign in</h1>
       <span className="rule" />
-      <form onSubmit={onSubmit} className="login">
+      <form onSubmit={onSignIn} className="login">
         <label>Email<input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
         {err && <p className="error">{err}</p>}
         <button className="btn btn-solid" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
       </form>
+      <button className="btn btn-link back" onClick={() => { setMode('forgot'); setErr('') }}>Forgot password?</button>
     </Shell>
+  )
+}
+
+function SetPassword({ title, intro, onDone, onCancel }) {
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+
+  async function onSubmit(e) {
+    e.preventDefault()
+    setErr('')
+    if (pw.length < MIN_PASSWORD) { setErr(`Use at least ${MIN_PASSWORD} characters.`); return }
+    if (pw !== pw2) { setErr('The two passwords don’t match.'); return }
+    setBusy(true)
+    const { error } = await supabase.auth.updateUser({ password: pw })
+    setBusy(false)
+    if (error) {
+      setErr(/different from the old/i.test(error.message) ? 'That’s your current password. Choose a new one.'
+        : /reauth|recent/i.test(error.message) ? 'For security, please sign out, sign in again and retry.'
+        : error.message)
+      return
+    }
+    setDone(true)
+  }
+
+  if (done) {
+    return (
+      <>
+        <p className="eyebrow">Admin</p>
+        <h1>Password updated</h1>
+        <span className="rule" />
+        <p className="lead">Use your new password next time you sign in.</p>
+        <button className="btn btn-solid" onClick={onDone}>Go to dashboard</button>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <p className="eyebrow">Admin</p>
+      <h1>{title}</h1>
+      <span className="rule" />
+      {intro && <p className="lead">{intro}</p>}
+      <form onSubmit={onSubmit} className="login">
+        <label>New password<input type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} required /></label>
+        <label>Confirm new password<input type="password" autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} required /></label>
+        <p className="hint">At least {MIN_PASSWORD} characters.</p>
+        {err && <p className="error">{err}</p>}
+        <button className="btn btn-solid" disabled={busy}>{busy ? 'Saving…' : 'Save password'}</button>
+      </form>
+      {onCancel && <button className="btn btn-link back" onClick={onCancel}>← Back to dashboard</button>}
+    </>
   )
 }
 
@@ -71,6 +185,7 @@ function Dashboard({ session }) {
   const [isAdmin, setIsAdmin] = useState(true)
   const [range, setRange] = useState('all')
   const [q, setQ] = useState('')
+  const [changingPw, setChangingPw] = useState(false)
 
   async function load() {
     setLoading(true); setErr('')
@@ -110,6 +225,15 @@ function Dashboard({ session }) {
     )
   }
 
+  if (changingPw) {
+    return (
+      <Shell>
+        <SetPassword title="Change password" intro={session.user.email}
+          onDone={() => setChangingPw(false)} onCancel={() => setChangingPw(false)} />
+      </Shell>
+    )
+  }
+
   const total = filtered.length
   const firstTime = filtered.filter((r) => r.first_purchase).length
   const existing = total - firstTime
@@ -129,6 +253,7 @@ function Dashboard({ session }) {
         <Logo />
         <div className="admin-actions">
           <span className="who">{session.user.email}</span>
+          <button className="btn btn-link" onClick={() => setChangingPw(true)}>Change password</button>
           <button className="btn btn-link" onClick={signOut}>Sign out</button>
         </div>
       </header>

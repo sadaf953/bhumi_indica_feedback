@@ -63,3 +63,7 @@ Repo → Settings → Secrets and variables → Actions:
 
 - **keep-alive.yml** pings `rpc/ping` daily so the free project never pauses.
 - **daily-backup.yml** runs at 1:30 AM IST, saves `responses`, `admin_emails` and login accounts as CSV into the backup repo, one folder per run. Test both from the Actions tab → Run workflow.
+
+## Admin passwords
+- **Change password**: link at the top of the dashboard (min 8 characters).
+- **Forgot password?**: on the sign-in page; emails a reset link (Supabase's built-in email, no edge function). Requires Supabase → Authentication → URL Configuration: Site URL `https://feedback.bhumiindica.in/admin/` and the same in Redirect URLs.
