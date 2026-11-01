@@ -70,6 +70,7 @@ function Dashboard({ session }) {
   const [err, setErr] = useState('')
   const [isAdmin, setIsAdmin] = useState(true)
   const [range, setRange] = useState('all')
+  const [q, setQ] = useState('')
 
   async function load() {
     setLoading(true); setErr('')
@@ -78,7 +79,7 @@ function Dashboard({ session }) {
     const all = []
     for (let from = 0; ; from += 1000) {
       const { data, error } = await supabase.from('responses')
-        .select('id, created_at, first_purchase, current_brand')
+        .select('id, created_at, customer_name, contact, contact_type, first_purchase, current_brand')
         .order('created_at', { ascending: false }).range(from, from + 999)
       if (error) { setErr(error.message); break }
       all.push(...data)
@@ -90,10 +91,12 @@ function Dashboard({ session }) {
 
   const filtered = useMemo(() => {
     const r = RANGES.find((x) => x.id === range)
-    if (!r.days) return rows
-    const since = Date.now() - r.days * 864e5
-    return rows.filter((row) => new Date(row.created_at).getTime() >= since)
-  }, [rows, range])
+    const since = r.days ? Date.now() - r.days * 864e5 : 0
+    const needle = q.trim().toLowerCase()
+    return rows.filter((row) =>
+      new Date(row.created_at).getTime() >= since &&
+      (!needle || `${row.customer_name || ''} ${row.contact || ''}`.toLowerCase().includes(needle)))
+  }, [rows, range, q])
 
   const signOut = () => supabase.auth.signOut()
 
@@ -177,15 +180,20 @@ function Dashboard({ session }) {
               </div>
             </div>
 
-            <h2 className="section-title">All responses</h2>
+            <div className="list-head">
+              <h2 className="section-title">All responses</h2>
+              <input className="search" type="search" placeholder="Search name, phone or email" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
             {total === 0 ? <p className="lead">No responses yet.</p> : (
               <div className="table-wrap">
                 <table className="table">
-                  <thead><tr><th>Date</th><th>First purchase?</th><th>Current brand</th><th /></tr></thead>
+                  <thead><tr><th>Date</th><th>Name</th><th>Phone / email</th><th>First purchase?</th><th>Current brand</th><th /></tr></thead>
                   <tbody>
                     {filtered.map((r) => (
                       <tr key={r.id}>
                         <td>{fmtDate(r.created_at)}</td>
+                        <td>{r.customer_name || '—'}</td>
+                        <td><ContactLink r={r} /></td>
                         <td><span className={'pill ' + (r.first_purchase ? 'yes' : 'no')}>{r.first_purchase ? 'Yes' : 'No'}</span></td>
                         <td>{r.current_brand || '—'}</td>
                         <td className="right"><button className="btn btn-link small" onClick={() => remove(r.id)}>Delete</button></td>
@@ -221,14 +229,24 @@ function Bar({ label, n, denom, max, cls }) {
   )
 }
 
+function ContactLink({ r }) {
+  if (!r.contact) return '—'
+  if (r.contact_type === 'phone') {
+    const digits = r.contact.replace('+', '')
+    const shown = r.contact.replace(/^\+91(\d{5})(\d{5})$/, '+91 $1 $2')
+    return <a className="contact" href={`https://wa.me/${digits}`} target="_blank" rel="noopener" title="Open WhatsApp chat">{shown}</a>
+  }
+  return <a className="contact" href={`mailto:${r.contact}`}>{r.contact}</a>
+}
+
 function fmtDate(iso) {
   return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 function downloadCsv(rows) {
   const esc = (s) => `"${String(s).replace(/"/g, '""')}"`
-  const lines = [['Date', 'First cast iron purchase', 'Current brand'].map(esc).join(',')]
-  for (const r of rows) lines.push([fmtDate(r.created_at), r.first_purchase ? 'Yes' : 'No', r.current_brand || ''].map(esc).join(','))
+  const lines = [['Date', 'Name', 'Phone / email', 'First cast iron purchase', 'Current brand'].map(esc).join(',')]
+  for (const r of rows) lines.push([fmtDate(r.created_at), r.customer_name || '', r.contact || '', r.first_purchase ? 'Yes' : 'No', r.current_brand || ''].map(esc).join(','))
   const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)

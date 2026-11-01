@@ -1,6 +1,6 @@
 # Bhumi Indica — Customer Feedback
 
-Anonymous post-purchase feedback (Q1 first cast iron purchase? → if No, Q2 current brand) + admin dashboard.
+Post-purchase feedback (customer name + phone or email → Q1 first cast iron purchase? → if No, Q2 current brand) + admin dashboard.
 React + Vite frontend, Supabase backend, deployed free on GitHub Pages.
 
 - Form: `/`  ·  Admin: `/admin/`
@@ -46,4 +46,4 @@ npm run dev
 ## Spam protection
 - No direct table access for the public — submissions only go through the `submit_response` function.
 - Hidden honeypot field, minimum 3-second time on page, database check constraints (only the 5 brands, brand only when answer is No), max 5 submissions per IP per hour (IP stored only as a hash).
-- No names, emails or phone numbers are collected.
+- Collects the customer's name and one contact (Indian mobile or email), validated on the page and in the database. Only admins (emails in admin_emails) can read them; the public cannot read the table at all.

@@ -1,16 +1,21 @@
 import { useRef, useState } from 'react'
-import { BRANDS, COPY, LINKS } from '../content.js'
+import { BRANDS, COPY, LINKS, parseContact } from '../content.js'
 import { supabase, supabaseConfigured } from '../supabase.js'
 import logo from '../logo.png'
 import './form.css'
 
 const ERRORS = {
   too_fast: 'That was quick! Please wait a moment and try again.',
+  bad_contact: 'Please check your phone number or email.',
+  bad_name: 'Please enter your name.',
 }
 
 export default function Form() {
-  const [step, setStep] = useState('q1') // q1 | q2 | thanks
+  const [step, setStep] = useState('details') // details | q1 | q2 | thanks
   const [picked, setPicked] = useState(null)
+  const [name, setName] = useState('')
+  const [contact, setContact] = useState('')
+  const [touched, setTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const startedAt = useRef(Date.now())
@@ -21,6 +26,8 @@ export default function Form() {
     if (!supabaseConfigured) { setError('This page isn’t connected yet. Please try again soon.'); setPicked(null); return }
     setBusy(true)
     const { error: err } = await supabase.rpc('submit_response', {
+      p_name: name.trim(),
+      p_contact: parseContact(contact)?.value || '',
       p_first_purchase: firstPurchase,
       p_current_brand: brand,
       p_hp: honeypot.current?.value || '',
@@ -34,6 +41,17 @@ export default function Form() {
       return
     }
     setStep('thanks')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const nameOk = name.trim().length >= 2
+  const parsed = parseContact(contact)
+  function submitDetails(e) {
+    e.preventDefault()
+    setTouched(true)
+    if (!nameOk || !parsed) return
+    setError('')
+    setStep('q1')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -72,12 +90,38 @@ export default function Form() {
               <p className="fb-intro">{COPY.intro}</p>
             </section>
 
-            <div className="fb-progress" aria-label={`Question ${step === 'q1' ? 1 : 2}`}>
-              <span className="fb-step-label">Question {step === 'q1' ? '1' : '2'}</span>
-              <span className="fb-bars"><i className="on" /><i className={step === 'q2' ? 'on' : ''} /></span>
+            <div className="fb-progress">
+              <span className="fb-step-label">
+                {step === 'details' ? 'Your details' : step === 'q1' ? 'Question 1' : 'Question 2'}
+              </span>
+              <span className="fb-bars">
+                <i className="on" /><i className={step !== 'details' ? 'on' : ''} /><i className={step === 'q2' ? 'on' : ''} />
+              </span>
             </div>
 
             <section className="fb-card" key={step}>
+              {step === 'details' && (
+                <form onSubmit={submitDetails} noValidate>
+                  <p className="fb-q">{COPY.detailsTitle}</p>
+                  <label className="fb-field">
+                    <span>Your name</span>
+                    <input type="text" autoComplete="name" autoCapitalize="words" maxLength={80}
+                      value={name} onChange={(e) => setName(e.target.value)}
+                      aria-invalid={touched && !nameOk} placeholder="Full name" />
+                    {touched && !nameOk && <em>Please enter your name.</em>}
+                  </label>
+                  <label className="fb-field">
+                    <span>Phone number or email</span>
+                    <input type="text" autoComplete="on" autoCapitalize="none" spellCheck={false} maxLength={120}
+                      value={contact} onChange={(e) => setContact(e.target.value)}
+                      aria-invalid={touched && !parsed} placeholder="98765 43210 or you@email.com" />
+                    {touched && !parsed && <em>Enter a 10-digit mobile number or a valid email.</em>}
+                  </label>
+                  <button type="submit" className="fb-btn solid fb-next">Continue</button>
+                  <p className="fb-note">{COPY.detailsNote}</p>
+                </form>
+              )}
+
               {step === 'q1' && (
                 <fieldset>
                   <legend className="fb-q">{COPY.q1}</legend>
@@ -91,6 +135,10 @@ export default function Form() {
                       </button>
                     ))}
                   </div>
+                  <button type="button" className="fb-back" disabled={busy}
+                    onClick={() => { setStep('details'); setPicked(null); setError('') }}>
+                    ← Back
+                  </button>
                 </fieldset>
               )}
 
