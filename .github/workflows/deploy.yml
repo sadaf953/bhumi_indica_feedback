@@ -1,7 +1,10 @@
 name: Deploy to GitHub Pages
 
-# Live site is on Hostinger; this GitHub Pages deploy is a manual backup option only.
+# Live at feedback.bhumiindica.in (DNS: CNAME feedback -> sadaf953.github.io).
+# Builds and deploys on every push to main. Uses the same secrets as keep-alive.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -25,8 +28,8 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
