@@ -3,8 +3,9 @@ import { BRANDS } from '../content.js'
 import { supabase, supabaseConfigured } from '../supabase.js'
 import Logo from '../components/Logo.jsx'
 
-// Read before supabase-js clears the URL: did we arrive from a reset-password email?
-const ARRIVED_FROM_RESET = /type=recovery/.test(window.location.hash)
+// Read before supabase-js clears the URL: did we arrive from a reset-password or invite email?
+const ARRIVED_FROM_INVITE = /type=invite/.test(window.location.hash)
+const ARRIVED_FROM_RESET = ARRIVED_FROM_INVITE || /type=recovery/.test(window.location.hash)
 const RESET_LINK_ERROR = /error_code=otp_expired|error=access_denied/.test(window.location.hash)
 const MIN_PASSWORD = 8
 
@@ -36,7 +37,8 @@ export default function Admin() {
     return (
       <Shell>
         <SetPassword
-          title="Set a new password" intro={`For ${session.user.email}`}
+          title={ARRIVED_FROM_INVITE ? 'Welcome! Set your password' : 'Set a new password'}
+          intro={ARRIVED_FROM_INVITE ? `Choose the password you’ll use to sign in as ${session.user.email}.` : `For ${session.user.email}`}
           onDone={() => { setRecovery(false); history.replaceState(null, '', window.location.pathname) }} />
       </Shell>
     )
@@ -57,7 +59,7 @@ function Login({ linkExpired }) {
   const [mode, setMode] = useState('signin') // signin | forgot | sent
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [err, setErr] = useState(linkExpired ? 'That reset link has expired or was already used. Request a new one below.' : '')
+  const [err, setErr] = useState(linkExpired ? 'That link has expired or was already used. Use “Forgot password?” below to get a new one.' : '')
   const [busy, setBusy] = useState(false)
 
   async function onSignIn(e) {
