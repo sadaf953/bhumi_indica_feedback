@@ -1,10 +1,8 @@
 name: Deploy to GitHub Pages
 
-# Live at feedback.bhumiindica.in (DNS: CNAME feedback -> sadaf953.github.io).
-# Builds and deploys on every push to main. Uses the same secrets as keep-alive.
+# Live site is on Hostinger (DNS: A feedback -> 147.79.103.184).
+# This GitHub Pages deploy is a manual backup option only.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
