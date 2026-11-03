@@ -9,6 +9,14 @@ const ARRIVED_FROM_RESET = ARRIVED_FROM_INVITE || /type=recovery/.test(window.lo
 const RESET_LINK_ERROR = /error_code=otp_expired|error=access_denied/.test(window.location.hash)
 const MIN_PASSWORD = 8
 
+// Email links (reset password / invite) arrive as ?token_hash=...&type=recovery|invite.
+// The one-time token is only used when the person presses Save, so email link
+// scanners that open the link first can't use it up, and it works on any device.
+const URL_PARAMS = new URLSearchParams(window.location.search)
+const TOKEN_HASH = URL_PARAMS.get('token_hash')
+const TOKEN_TYPE = ['recovery', 'invite'].includes(URL_PARAMS.get('type')) ? URL_PARAMS.get('type') : null
+const clearUrl = () => history.replaceState(null, '', window.location.pathname)
+
 const RANGES = [
   { id: 'all', label: 'All time', days: null },
   { id: '30', label: '30 days', days: 30 },
@@ -31,6 +39,17 @@ export default function Admin() {
   }, [])
 
   if (!supabaseConfigured) return <Shell><p className="lead">Supabase isn’t configured yet.</p></Shell>
+  if (TOKEN_HASH && TOKEN_TYPE) {
+    return (
+      <Shell>
+        <SetPassword
+          tokenHash={TOKEN_HASH} tokenType={TOKEN_TYPE}
+          title={TOKEN_TYPE === 'invite' ? 'Welcome! Set your password' : 'Set a new password'}
+          intro={TOKEN_TYPE === 'invite' ? 'Choose the password you’ll use to sign in to the feedback dashboard.' : 'Choose a new password for your admin account.'}
+          onDone={() => { clearUrl(); window.location.reload() }} />
+      </Shell>
+    )
+  }
   if (checking) return <Shell><p className="lead">Loading…</p></Shell>
   if (!session) return <Login linkExpired={RESET_LINK_ERROR} />
   if (recovery) {
@@ -39,7 +58,7 @@ export default function Admin() {
         <SetPassword
           title={ARRIVED_FROM_INVITE ? 'Welcome! Set your password' : 'Set a new password'}
           intro={ARRIVED_FROM_INVITE ? `Choose the password you’ll use to sign in as ${session.user.email}.` : `For ${session.user.email}`}
-          onDone={() => { setRecovery(false); history.replaceState(null, '', window.location.pathname) }} />
+          onDone={() => { setRecovery(false); clearUrl() }} />
       </Shell>
     )
   }
@@ -126,12 +145,14 @@ function Login({ linkExpired }) {
   )
 }
 
-function SetPassword({ title, intro, onDone, onCancel }) {
+function SetPassword({ title, intro, onDone, onCancel, tokenHash, tokenType }) {
   const [pw, setPw] = useState('')
   const [pw2, setPw2] = useState('')
   const [err, setErr] = useState('')
+  const [linkDead, setLinkDead] = useState(false)
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(false)
+  const [verified, setVerified] = useState(false)
 
   async function onSubmit(e) {
     e.preventDefault()
@@ -139,6 +160,11 @@ function SetPassword({ title, intro, onDone, onCancel }) {
     if (pw.length < MIN_PASSWORD) { setErr(`Use at least ${MIN_PASSWORD} characters.`); return }
     if (pw !== pw2) { setErr('The two passwords don’t match.'); return }
     setBusy(true)
+    if (tokenHash && !verified) {
+      const { error: vErr } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: tokenType })
+      if (vErr) { setBusy(false); setLinkDead(true); return }
+      setVerified(true)
+    }
     const { error } = await supabase.auth.updateUser({ password: pw })
     setBusy(false)
     if (error) {
@@ -148,6 +174,18 @@ function SetPassword({ title, intro, onDone, onCancel }) {
       return
     }
     setDone(true)
+  }
+
+  if (linkDead) {
+    return (
+      <>
+        <p className="eyebrow">Admin</p>
+        <h1>Link expired</h1>
+        <span className="rule" />
+        <p className="lead">This link has expired or was already used. Links work once and expire after an hour. Request a fresh one and use the newest email.</p>
+        <button className="btn btn-solid" onClick={() => { clearUrl(); window.location.reload() }}>Back to sign in</button>
+      </>
+    )
   }
 
   if (done) {
